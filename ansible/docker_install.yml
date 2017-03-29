@@ -1,0 +1,32 @@
+---
+- hosts: all
+  tasks:
+    - name: Install Docker Server from a remote repo
+      yum: name=http://dl.fedoraproject.org/pub/epel/6/x86_64/epel-release-6-8.noarch.rpm state=present
+    
+#    - name: Update system packages
+#      shell: yum update -y
+
+    - name: Upgrade all packages
+      yum: name=* state=latest
+
+    - name: Install Docker-io service
+      yum: name=docker-io state=present
+      notify:
+        - start docker
+
+    - name: auto start service
+      service: 
+        name: "{{ item }}"
+        enabled: yes
+      with_items:
+        - docker
+
+  handlers:
+    - name: start docker
+      service:
+        name: "{{ item }}"
+        state: started
+      with_items:
+        - docker
+  
