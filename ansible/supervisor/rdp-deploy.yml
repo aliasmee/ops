@@ -1,0 +1,101 @@
+---
+- hosts: all
+  remote_user: root
+
+  # We make some variables,is a dictionary
+  vars:
+    proxy_env:
+      http_proxy: http://192.168.30.175:3128
+      https_proxy: http://192.168.30.175:3128
+  # Download centos epel from Aliyun
+  tasks:
+    - name: Download Ali's epel
+      get_url: url=http://mirrors.aliyun.com/repo/Centos-6.repo dest=/etc/yum.repos.d/CentOS-Base.repo
+      environment: "{{proxy_env}}"
+
+  # Install python-setuptools for easy_install command And Install supervisor python library
+#    - name: Install package (python-setuptools)
+#      yum: name=python-setuptools state=latest update_cache=yes
+#      environment: "{{proxy_env}}"
+
+    - name: Download pip and install
+      get_url: url=https://bootstrap.pypa.io/get-pip.py dest=/tmp/get-pip.py
+      environment: "{{proxy_env}}"
+
+    - name: Install pip
+      shell: python /tmp/get-pip.py
+      environment: "{{proxy_env}}"
+
+    - name: Install supervisor package
+      pip: name=supervisor
+      environment: "{{proxy_env}}"
+
+#    - name: Install yilai
+#      pip: name=meld3
+#      version: 1.0.0
+
+  # Generate config File For supervisord
+    - name: Generate config File For supervisord
+      shell: /usr/bin/echo_supervisord_conf > /etc/supervisord.conf
+
+  # Create supervisor directory
+    - name: Create supervisor manage stored subprograms of the configuration file directory
+      file: path=/etc/supervisor/config.d state=directory mode=0755
+
+  # Modify supervisord profile Add subprograms directory config
+    - name: Modify supervisord profile
+      shell: sed -i '$ a [include]' /etc/supervisord.conf
+
+    - name: Modify supervisord
+      shell: sed -i '$ a files = /etc/supervisor/config.d/*.ini' /etc/supervisord.conf
+
+  # The supervisord the main program startup script from the local copy to the remote host
+    - name: Copy supervisord main programs script
+      copy: src=./files/supervisor dest=/etc/init.d/supervisor mode=755
+      register: copy_supervisor
+      ignore_errors: True
+
+    - name: Install package (libselinux-python) for enabled selinux
+      yum: name=libselinux-python state=latest
+      environment: "{{proxy_env}}"
+      when: copy_supervisor|failed
+
+    - name: Copy supervisord main programs script
+      copy: src=./files/supervisor dest=/etc/init.d/supervisor mode=755
+      register: copy_supervisor
+      ignore_errors: True
+
+    - name: Set supervisor main programs autoboot, And disable tomcat & guacd daemon run,When host power on
+      shell: chkconfig supervisor on
+
+    - name: stop tomcat autostart
+      shell: chkconfig tomcat off
+
+    - name: stop guacd autostart
+      shell: chkconfig guacd off
+
+    - name: Create a subroutine logs directory
+      file: path=/var/log/guacd state=directory mode=755
+
+    - name: Copy the Tomcat&Guacd program configuration file to /etc/supervisor/config.d/
+      copy: src=./files/tomcat.ini dest=/etc/supervisor/config.d/tomcat.ini mode=0644
+
+    - name: Copy config file
+      copy: src=./files/guacd.ini dest=/etc/supervisor/config.d/guacd.ini mode=0644
+
+    - name: Stop using the Tomcat daemon runs, and guacd
+      shell: /etc/init.d/tomcat stop
+
+    - name: Stop guacd daemon
+      shell: /etc/init.d/guacd stop
+
+    - name: makesure guacd stop
+      shell: pkill guacd
+      ignore_errors: True
+
+    - name: makesure tomcat stop
+      shell: pkill tomcat
+      ignore_errors: True
+
+    - name: Start the Supervisor program so that it loads the configuration file for Tomcat and guacd program
+      service: name=supervisor state=restarted
